@@ -71,7 +71,7 @@ ROLE_MESSAGE_IDS = {
 COOKIES_FILE = Path(__file__).parent / "cookies.txt"
 
 ytdl_format_options = {
-    'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[height<=480]/best',
+    'format': 'bestaudio/best',
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
     'restrictfilenames': True,
     'noplaylist': True,
@@ -81,13 +81,14 @@ ytdl_format_options = {
     'no_warnings': True,
     'default_search': 'auto',
     'source_address': '0.0.0.0',
-    'extractor_args': {'youtube': {'player_client': ['ios', 'web']}},
 }
 
-# Add cookies only if file exists
+# Add cookies file if it exists (optional, helps with some restricted videos)
 if COOKIES_FILE.exists():
     ytdl_format_options['cookiefile'] = str(COOKIES_FILE)
     print(f"[YouTube] Using cookies from: {COOKIES_FILE}")
+else:
+    print("[YouTube] No cookies file - using default access")
 
 ffmpeg_options = {
     'options': '-vn -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -loglevel quiet'
