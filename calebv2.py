@@ -67,11 +67,8 @@ ROLE_MESSAGE_IDS = {
 
 # ========================= YOUTUBE CONFIG =========================
 
-# Path to cookies file (same folder as this script)
-COOKIES_PATH = Path(__file__).parent / "cookies.txt"
-
 ytdl_format_options = {
-    'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
+    'format': 'bestaudio/best',
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
     'restrictfilenames': True,
     'noplaylist': True,
@@ -80,14 +77,7 @@ ytdl_format_options = {
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
-    'source_address': '0.0.0.0',
-    # Anti-bot bypass with cookies
-    'cookiefile': str(COOKIES_PATH) if COOKIES_PATH.exists() else None,
-    'extractor_args': {'youtube': {'player_client': ['ios', 'web']}},
-    'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-    }
+    'source_address': '0.0.0.0'
 }
 
 ffmpeg_options = {
