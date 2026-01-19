@@ -51,8 +51,9 @@ if not DISCORD_TOKEN:
 DB_PATH = Path(__file__).parent / "drink_counter.db"
 
 # Role Assignment: Map emoji to role name
+# Note: Using base emoji without variation selectors for reliable matching
 EMOJI_ROLE_MAP = {
-    "🕹️": "gamers",
+    "🕹": "gamers",   # Joystick (without variation selector)
     "🫂": "caleb",
     "💃": "犯人",
     "🤫": "共犯",
@@ -157,7 +158,8 @@ class RoleAssignment(commands.Cog):
         if payload.user_id == self.bot.user.id:
             return
         
-        emoji_str = str(payload.emoji)
+        # Strip variation selectors for consistent emoji matching
+        emoji_str = str(payload.emoji).replace('\ufe0f', '')
         if emoji_str not in EMOJI_ROLE_MAP:
             return
         
@@ -189,7 +191,8 @@ class RoleAssignment(commands.Cog):
     
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
-        emoji_str = str(payload.emoji)
+        # Strip variation selectors for consistent emoji matching
+        emoji_str = str(payload.emoji).replace('\ufe0f', '')
         if emoji_str not in EMOJI_ROLE_MAP:
             return
         
