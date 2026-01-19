@@ -71,7 +71,7 @@ ROLE_MESSAGE_IDS = {
 COOKIES_FILE = Path(__file__).parent / "cookies.txt"
 
 ytdl_format_options = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[height<=480]/best',
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
     'restrictfilenames': True,
     'noplaylist': True,
@@ -80,7 +80,8 @@ ytdl_format_options = {
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
-    'source_address': '0.0.0.0'
+    'source_address': '0.0.0.0',
+    'extractor_args': {'youtube': {'player_client': ['ios', 'web']}},
 }
 
 # Add cookies only if file exists
