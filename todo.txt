@@ -1,0 +1,2 @@
+change drink counter username with @ so easier search
+youtube bot fix
