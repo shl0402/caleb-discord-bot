@@ -39,8 +39,13 @@ git push
 
 **Option B: SSH from PowerShell**
 ```powershell
-cd Downloads
+cd "D:\Using\leisure\discordbot\Discord Bot"
 ssh -i "discord-bot-key.pem" ubuntu@YOUR_PUBLIC_IP
+```
+
+**If you get permission error on Windows, run this first:**
+```
+icacls discord-bot_key.pem /inheritance:r /grant:r "$($env:USERNAME):(R)"
 ```
 
 ---
