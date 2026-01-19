@@ -53,7 +53,7 @@ DB_PATH = Path(__file__).parent / "drink_counter.db"
 # Role Assignment: Map emoji to role name
 # Note: Using base emoji without variation selectors for reliable matching
 EMOJI_ROLE_MAP = {
-    "🕹️": "gamer",
+    "🕹": "gamer",   # Joystick WITHOUT variation selector
     "🫂": "caleb",
     "💃": "犯人",
     "🤫": "共犯",
