@@ -464,6 +464,9 @@ class Music(commands.Cog):
         # Defer IMMEDIATELY to prevent timeout
         await interaction.response.defer(thinking=True)
         
+        # Clean up query (remove accidental spaces)
+        query = query.strip()
+        
         # Get or create player
         player: wavelink.Player = interaction.guild.voice_client
         
