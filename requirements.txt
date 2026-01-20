@@ -8,8 +8,9 @@ discord.py>=2.3.0
 # Async SQLite for drink counter database
 aiosqlite>=0.19.0
 
-# YouTube audio playback (with all optional dependencies)
-yt-dlp[default]>=2025.1.0
+# Wavelink - Lavalink client for music (replaces yt-dlp)
+# This connects to public Lavalink servers that handle YouTube downloading
+wavelink>=3.0.0
 
 # Voice support (required for music bot)
 PyNaCl>=1.5.0
