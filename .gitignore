@@ -2,6 +2,32 @@
 private.py
 *.db
 drink_counter.db
+cookies.txt
+*.pem
+
+# Only these files should be in repo:
+# - calebv2.py
+# - requirements.txt
+# - README.md
+# - .gitignore
+
+# Ignore all other python files
+1117.py
+caleb.py
+checklink.py
+cleanup_downloads.py
+dchatbot.py
+drink.py
+drinkv2.py
+main.py
+music.py
+newlink.py
+test.py
+time.py
+youtube*.py
+bot_combined.py
+tempCodeRunnerFile.py
+python test.py
 
 # Python
 __pycache__/
