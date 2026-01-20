@@ -403,22 +403,26 @@ class Music(commands.Cog):
         player = payload.player
         track = payload.track
         
-        if player and player.channel:
-            # Find a text channel to send the message
-            guild = player.guild
-            for channel in guild.text_channels:
-                if channel.permissions_for(guild.me).send_messages:
-                    embed = discord.Embed(
-                        title="🎵 Now Playing",
-                        description=f"**{track.title}**",
-                        color=discord.Color.purple()
-                    )
-                    if track.artwork:
-                        embed.set_thumbnail(url=track.artwork)
-                    embed.add_field(name="Duration", value=self.format_duration(track.length), inline=True)
-                    embed.add_field(name="Author", value=track.author, inline=True)
-                    await channel.send(embed=embed)
-                    break
+        # Skip if this was triggered by /play command (it already sent the message)
+        if hasattr(player, '_skip_next_announce') and player._skip_next_announce:
+            player._skip_next_announce = False
+            return
+        
+        # Only send to the stored text channel (where command was used)
+        if player and hasattr(player, 'text_channel') and player.text_channel:
+            try:
+                embed = discord.Embed(
+                    title="🎵 Now Playing",
+                    description=f"**{track.title}**",
+                    color=discord.Color.purple()
+                )
+                if track.artwork:
+                    embed.set_thumbnail(url=track.artwork)
+                embed.add_field(name="Duration", value=self.format_duration(track.length), inline=True)
+                embed.add_field(name="Author", value=track.author, inline=True)
+                await player.text_channel.send(embed=embed)
+            except discord.HTTPException:
+                pass
     
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
@@ -473,6 +477,9 @@ class Music(commands.Cog):
             except Exception as e:
                 return await interaction.followup.send(f"❌ Failed to join: {e}")
         
+        # Store the text channel for announcements
+        player.text_channel = interaction.channel
+        
         # Search for track
         try:
             # Add ytsearch: prefix if not a URL
@@ -496,6 +503,8 @@ class Music(commands.Cog):
                 embed.add_field(name="Duration", value=self.format_duration(track.length), inline=True)
                 await interaction.followup.send(embed=embed)
             else:
+                # Skip the on_wavelink_track_start announcement (we'll send it here)
+                player._skip_next_announce = True
                 await player.play(track)
                 embed = discord.Embed(
                     title="🎵 Now Playing",
