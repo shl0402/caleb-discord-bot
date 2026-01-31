@@ -68,6 +68,9 @@ ROLE_MESSAGE_IDS = {
 
 # ========================= YOUTUBE CONFIG =========================
 
+# Path to cookies file (same folder as this script)
+COOKIES_FILE = Path(__file__).parent / "cookies.txt"
+
 ytdl_format_options = {
     'format': 'bestaudio/best',
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
@@ -75,15 +78,18 @@ ytdl_format_options = {
     'noplaylist': True,
     'nocheckcertificate': True,
     'ignoreerrors': False,
-    'quiet': False,              # Show output so you can see OAuth auth code!
-    'no_warnings': False,
+    'quiet': True,
+    'no_warnings': True,
     'default_search': 'auto',
     'source_address': '0.0.0.0',
-    'username': 'oauth2',        # Use OAuth2 authentication
-    'password': '',              # Keep empty for OAuth2
 }
 
-print("[YouTube] Using OAuth2 authentication")
+# Add cookies file if it exists (optional, helps with some restricted videos)
+if COOKIES_FILE.exists():
+    ytdl_format_options['cookiefile'] = str(COOKIES_FILE)
+    print(f"[YouTube] Using cookies from: {COOKIES_FILE}")
+else:
+    print("[YouTube] No cookies file - using default access")
 
 ffmpeg_options = {
     'options': '-vn -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -loglevel quiet'
