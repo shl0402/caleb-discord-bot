@@ -53,15 +53,10 @@ ROLE_MESSAGE_IDS = {
 # Updated: January 2026
 
 LAVALINK_NODES = [
-    # Embotic - Lavalink v4.1.1 with youtube-plugin
+    # Amane & AjieDev - Lavalink v4.x (usually reliable)
     {
-        "uri": "http://46.202.82.147:1026",
-        "password": "jmlitev4",
-    },
-    # hatry4/naig - Lavalink v4.0.8 with youtube-plugin and YouTube OAuth2
-    {
-        "uri": "http://lavahatry4.techbyte.host:3000",
-        "password": "naig.is-a.dev",
+        "uri": "http://lavalinkv4.serenetia.com:80",
+        "password": "https://dsc.gg/ajidevserver",
     },
     # TriniumHost - Lavalink v4.x
     {
@@ -73,10 +68,10 @@ LAVALINK_NODES = [
         "uri": "http://lavalink.jirayu.net:13592",
         "password": "youshallnotpass",
     },
-    # Amane & AjieDev - Lavalink v4.x
+    # hatry4/naig - Lavalink v4.0.8 with youtube-plugin and YouTube OAuth2
     {
-        "uri": "http://lavalinkv4.serenetia.com:80",
-        "password": "https://dsc.gg/ajidevserver",
+        "uri": "http://lavahatry4.techbyte.host:3000",
+        "password": "naig.is-a.dev",
     },
     # Ariato - Lavalink v4.1.1
     {
@@ -87,6 +82,11 @@ LAVALINK_NODES = [
     {
         "uri": "http://ll.wpcreative.my.id:22233",
         "password": "youshallnotpass",
+    },
+    # Embotic - Lavalink v4.1.1 (moved to end - was timing out)
+    {
+        "uri": "http://46.202.82.147:1026",
+        "password": "jmlitev4",
     },
 ]
 
@@ -397,8 +397,14 @@ class Music(commands.Cog):
         self.connected_node = None
     
     async def cog_load(self):
-        """Connect to Lavalink nodes when cog loads"""
-        print("[Music] Connecting to Lavalink nodes...")
+        """Start Lavalink connection in background (non-blocking)"""
+        print("[Music] Starting Lavalink connection in background...")
+        # Start connection in background so it doesn't block command sync
+        self.bot.loop.create_task(self._connect_to_lavalink())
+    
+    async def _connect_to_lavalink(self):
+        """Connect to Lavalink nodes (runs in background)"""
+        await asyncio.sleep(2)  # Wait for bot to fully initialize
         
         for i, node_config in enumerate(LAVALINK_NODES):
             try:
