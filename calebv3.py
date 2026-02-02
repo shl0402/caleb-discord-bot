@@ -49,44 +49,29 @@ ROLE_MESSAGE_IDS = {
 
 # ========================= LAVALINK CONFIG =========================
 # Public Lavalink nodes - these handle YouTube downloading so your server doesn't get blocked!
-# List from: https://lavalink-list.darrennathanael.com/NoSSL/Lavalink-NonSSL/
-# Updated: January 2026
+# List from: https://lavalink-list.darrennathanael.com/
+# Updated: February 2026 - Public nodes can go offline, check the list for updates!
 
 LAVALINK_NODES = [
-    # Amane & AjieDev - Lavalink v4.x (usually reliable)
     {
-        "uri": "http://lavalinkv4.serenetia.com:80",
+        "uri": "http://lava-v3.ajieblogs.eu.org:80",
         "password": "https://dsc.gg/ajidevserver",
     },
-    # TriniumHost - Lavalink v4.x
     {
-        "uri": "http://lavalink.triniumhost.com:4333",
-        "password": "free",
+        "uri": "http://lavalink.lexnet.cc:2333",
+        "password": "lexn3tl@telegramalicantt",
     },
-    # Jirayu - Lavalink v4.0.8 with salee-plugin (Proxy)
     {
-        "uri": "http://lavalink.jirayu.net:13592",
+        "uri": "http://lavalink.clxud.lol:2333",
         "password": "youshallnotpass",
     },
-    # hatry4/naig - Lavalink v4.0.8 with youtube-plugin and YouTube OAuth2
     {
-        "uri": "http://lavahatry4.techbyte.host:3000",
-        "password": "naig.is-a.dev",
+        "uri": "http://45.137.117.104:5124",
+        "password": "Jeylani.ทำัคนพืก",
     },
-    # Ariato - Lavalink v4.1.1
     {
-        "uri": "http://lavalink.aiko-project.xyz:2333",
-        "password": "Rikka",
-    },
-    # urfavteddybear - Lavalink v4.1.1
-    {
-        "uri": "http://ll.wpcreative.my.id:22233",
+        "uri": "http://37.27.1.113:2333",
         "password": "youshallnotpass",
-    },
-    # Embotic - Lavalink v4.1.1 (moved to end - was timing out)
-    {
-        "uri": "http://46.202.82.147:1026",
-        "password": "jmlitev4",
     },
 ]
 
@@ -394,17 +379,10 @@ class Music(commands.Cog):
     
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.connected_node = None
     
     async def cog_load(self):
-        """Start Lavalink connection in background (non-blocking)"""
-        print("[Music] Starting Lavalink connection in background...")
-        # Start connection in background so it doesn't block command sync
-        self.bot.loop.create_task(self._connect_to_lavalink())
-    
-    async def _connect_to_lavalink(self):
-        """Connect to Lavalink nodes (runs in background)"""
-        await asyncio.sleep(2)  # Wait for bot to fully initialize
+        """Connect to Lavalink nodes when cog loads"""
+        print("[Music] Connecting to Lavalink nodes...")
         
         for i, node_config in enumerate(LAVALINK_NODES):
             try:
@@ -414,40 +392,12 @@ class Music(commands.Cog):
                 )
                 await wavelink.Pool.connect(nodes=[node], client=self.bot, cache_capacity=100)
                 print(f"[Music] ✅ Connected to Lavalink node: {node_config['uri']}")
-                self.connected_node = node_config["uri"]
                 return  # Connected successfully, stop trying other nodes
             except Exception as e:
-                print(f"[Music] ❌ Failed to connect to node {i+1} ({node_config['uri']}): {e}")
+                print(f"[Music] ❌ Failed to connect to node {i+1}: {e}")
                 continue
         
-        print("[Music] ⚠️ Could not connect to any Lavalink node! Music commands will not work.")
-        print("[Music] Check https://lavalink-list.darrennathanael.com for updated nodes.")
-    
-    async def ensure_node_connected(self) -> bool:
-        """Check if we have a connected node, try to reconnect if not"""
-        try:
-            nodes = wavelink.Pool.nodes
-            if nodes and any(n.status == wavelink.NodeStatus.CONNECTED for n in nodes.values()):
-                return True
-        except Exception:
-            pass
-        
-        # Try to reconnect
-        print("[Music] No connected nodes, attempting to reconnect...")
-        for i, node_config in enumerate(LAVALINK_NODES):
-            try:
-                node = wavelink.Node(
-                    uri=node_config["uri"],
-                    password=node_config["password"],
-                )
-                await wavelink.Pool.connect(nodes=[node], client=self.bot, cache_capacity=100)
-                print(f"[Music] ✅ Reconnected to Lavalink node: {node_config['uri']}")
-                self.connected_node = node_config["uri"]
-                return True
-            except Exception as e:
-                print(f"[Music] ❌ Reconnect failed for node {i+1}: {e}")
-                continue
-        return False
+        print("[Music] ⚠️ Could not connect to any Lavalink node!")
     
     @commands.Cog.listener()
     async def on_wavelink_node_ready(self, payload: wavelink.NodeReadyEventPayload):
@@ -502,37 +452,26 @@ class Music(commands.Cog):
     @app_commands.command(name="join", description="Join your voice channel")
     async def slash_join(self, interaction: discord.Interaction):
         if not interaction.user.voice:
-            return await interaction.response.send_message("❌ You must be in a voice channel!", ephemeral=True)
+            return await interaction.response.send_message("You must be in a voice channel!", ephemeral=True)
         
-        # Check if we have a connected Lavalink node
-        if not await self.ensure_node_connected():
-            return await interaction.response.send_message(
-                "❌ No Lavalink nodes available. The music service is currently unavailable.\n"
-                "Please try again later or contact the bot owner.", 
-                ephemeral=True
-            )
+        # Defer to prevent timeout during connection
+        await interaction.response.defer(thinking=True)
         
         channel = interaction.user.voice.channel
         
         try:
             player = await channel.connect(cls=wavelink.Player, self_deaf=True)
             player.autoplay = wavelink.AutoPlayMode.disabled
-            await interaction.response.send_message(f"✅ Joined **{channel.name}**")
+            player.text_channel = interaction.channel  # Store for announcements
+            await interaction.followup.send(f"✅ Joined **{channel.name}**")
         except Exception as e:
-            await interaction.response.send_message(f"❌ Failed to join: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ Failed to join: {e}")
     
     @app_commands.command(name="play", description="Play a song from YouTube")
     @app_commands.describe(query="YouTube URL or search query")
     async def slash_play(self, interaction: discord.Interaction, query: str):
         # Defer IMMEDIATELY to prevent timeout
         await interaction.response.defer(thinking=True)
-        
-        # Check if we have a connected Lavalink node
-        if not await self.ensure_node_connected():
-            return await interaction.followup.send(
-                "❌ No Lavalink nodes available. The music service is currently unavailable.\n"
-                "Please try again later or contact the bot owner."
-            )
         
         # Clean up query (remove accidental spaces)
         query = query.strip()
