@@ -1,21 +1,10 @@
-"""
-Caleb Bot v3 - Combined Discord Bot with Lavalink
-Features:
-1. Role Assignment via Emoji Reactions
-2. Drink Counter with per-channel tracking
-3. YouTube Music Player using Lavalink/Wavelink (stable, no YouTube blocking!)
-
-All features include both prefix commands (!) and slash commands (/)
-"""
-
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 import asyncio
 import aiosqlite
-import wavelink
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 import os
 
@@ -29,8 +18,11 @@ if not DISCORD_TOKEN:
 
 # ========================= CONFIGURATION =========================
 
-# Database file path for drink counter
-DB_PATH = Path(__file__).parent / "drink_counter.db"
+# Database file path for bot data
+DB_PATH = Path(__file__).parent / "caleb_bot_data.db"
+
+# Event Announcement Channel
+ANNOUNCEMENT_CHANNEL_ID = 123456789012345678  # ⚠️ REPLACE THIS WITH YOUR TARGET CHANNEL ID
 
 # Role Assignment: Map emoji to role name
 EMOJI_ROLE_MAP = {
@@ -46,34 +38,6 @@ ROLE_MESSAGE_IDS = {
     1261173511511216231: 0,
     1261157962702127104: 0,
 }
-
-# ========================= LAVALINK CONFIG =========================
-# Public Lavalink nodes - these handle YouTube downloading so your server doesn't get blocked!
-# List from: https://lavalink-list.darrennathanael.com/
-# Updated: February 2026 - Public nodes can go offline, check the list for updates!
-
-LAVALINK_NODES = [
-    {
-        "uri": "http://lava-v3.ajieblogs.eu.org:80",
-        "password": "https://dsc.gg/ajidevserver",
-    },
-    {
-        "uri": "http://lavalink.lexnet.cc:2333",
-        "password": "lexn3tl@telegramalicantt",
-    },
-    {
-        "uri": "http://lavalink.clxud.lol:2333",
-        "password": "youshallnotpass",
-    },
-    {
-        "uri": "http://45.137.117.104:5124",
-        "password": "Jeylani.ทำัคนพืก",
-    },
-    {
-        "uri": "http://37.27.1.113:2333",
-        "password": "youshallnotpass",
-    },
-]
 
 
 # ========================= ROLE ASSIGNMENT COG =========================
@@ -186,7 +150,7 @@ class DrinkCounter(commands.Cog):
     
     async def cog_load(self):
         await self.init_db()
-        print(f"[DrinkCounter] Cog loaded! Database: {self.db_path}")
+        print(f"[DrinkCounter] Cog loaded!")
     
     async def init_db(self):
         async with aiosqlite.connect(self.db_path) as db:
@@ -304,7 +268,7 @@ class DrinkCounter(commands.Cog):
         embed = discord.Embed(
             title=f"{'🍺' if amount == 1 else '🍻'} Drink Debt Added!",
             description=f"**{debtor.display_name}** now owes **{creditor.display_name}** {new_total} drink(s)!" +
-                       (f"\n📝 Reason: {reason}" if reason else ""),
+                        (f"\n📝 Reason: {reason}" if reason else ""),
             color=discord.Color.orange()
         )
         embed.set_footer(text=f"#{interaction.channel.name}")
@@ -322,7 +286,7 @@ class DrinkCounter(commands.Cog):
         embed = discord.Embed(
             title="✅ Debt Cleared!" if remaining == 0 else "🍺 Drink Paid!",
             description=f"**{debtor.display_name}** paid **{creditor.display_name}**" + 
-                       (f" 🎉" if remaining == 0 else f". Remaining: {remaining}"),
+                        (f" 🎉" if remaining == 0 else f". Remaining: {remaining}"),
             color=discord.Color.green() if remaining == 0 else discord.Color.blue()
         )
         embed.set_footer(text=f"#{interaction.channel.name}")
@@ -372,396 +336,131 @@ class DrinkCounter(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
 
-# ========================= MUSIC COG (LAVALINK/WAVELINK) =========================
+# ========================= EVENT ANNOUNCER COG =========================
 
-class Music(commands.Cog):
-    """Cog for YouTube music playback using Lavalink"""
-    
+class EventAnnouncer(commands.Cog):
+    """Cog for managing and announcing events automatically"""
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.db_path = DB_PATH
     
     async def cog_load(self):
-        """Connect to Lavalink nodes when cog loads"""
-        print("[Music] Connecting to Lavalink nodes...")
-        
-        for i, node_config in enumerate(LAVALINK_NODES):
-            try:
-                node = wavelink.Node(
-                    uri=node_config["uri"],
-                    password=node_config["password"],
-                )
-                await wavelink.Pool.connect(nodes=[node], client=self.bot, cache_capacity=100)
-                print(f"[Music] ✅ Connected to Lavalink node: {node_config['uri']}")
-                return  # Connected successfully, stop trying other nodes
-            except Exception as e:
-                print(f"[Music] ❌ Failed to connect to node {i+1}: {e}")
-                continue
-        
-        print("[Music] ⚠️ Could not connect to any Lavalink node!")
-    
-    @commands.Cog.listener()
-    async def on_wavelink_node_ready(self, payload: wavelink.NodeReadyEventPayload):
-        print(f"[Music] Lavalink node ready: {payload.node.identifier}")
-    
-    @commands.Cog.listener()
-    async def on_wavelink_track_start(self, payload: wavelink.TrackStartEventPayload):
-        player = payload.player
-        track = payload.track
-        
-        # Skip if this was triggered by /play command (it already sent the message)
-        if hasattr(player, '_skip_next_announce') and player._skip_next_announce:
-            player._skip_next_announce = False
-            return
-        
-        # Only send to the stored text channel (where command was used)
-        if player and hasattr(player, 'text_channel') and player.text_channel:
-            try:
-                embed = discord.Embed(
-                    title="🎵 Now Playing",
-                    description=f"**{track.title}**",
-                    color=discord.Color.purple()
-                )
-                if track.artwork:
-                    embed.set_thumbnail(url=track.artwork)
-                embed.add_field(name="Duration", value=self.format_duration(track.length), inline=True)
-                embed.add_field(name="Author", value=track.author, inline=True)
-                await player.text_channel.send(embed=embed)
-            except discord.HTTPException:
-                pass
-    
-    @commands.Cog.listener()
-    async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
-        player = payload.player
-        if player and not player.queue.is_empty:
-            await player.play(player.queue.get())
-    
-    @commands.Cog.listener()
-    async def on_wavelink_inactive_player(self, player: wavelink.Player):
-        """Disconnect after being inactive"""
-        await player.disconnect()
-    
-    def format_duration(self, ms: int) -> str:
-        """Format milliseconds to MM:SS"""
-        seconds = ms // 1000
-        minutes = seconds // 60
-        seconds = seconds % 60
-        return f"{minutes}:{seconds:02d}"
+        await self.init_db()
+        self.event_check_loop.start()
+        print(f"[EventAnnouncer] Cog loaded! Checking events every 30 minutes.")
 
-    # ===== SLASH COMMANDS =====
-    
-    @app_commands.command(name="join", description="Join your voice channel")
-    async def slash_join(self, interaction: discord.Interaction):
-        if not interaction.user.voice:
-            return await interaction.response.send_message("You must be in a voice channel!", ephemeral=True)
-        
-        # Defer to prevent timeout during connection
-        await interaction.response.defer(thinking=True)
-        
-        channel = interaction.user.voice.channel
-        
-        try:
-            player = await channel.connect(cls=wavelink.Player, self_deaf=True)
-            player.autoplay = wavelink.AutoPlayMode.disabled
-            player.text_channel = interaction.channel  # Store for announcements
-            await interaction.followup.send(f"✅ Joined **{channel.name}**")
-        except Exception as e:
-            await interaction.followup.send(f"❌ Failed to join: {e}")
-    
-    @app_commands.command(name="play", description="Play a song from YouTube")
-    @app_commands.describe(query="YouTube URL or search query")
-    async def slash_play(self, interaction: discord.Interaction, query: str):
-        # Defer IMMEDIATELY to prevent timeout
-        await interaction.response.defer(thinking=True)
-        
-        # Clean up query (remove accidental spaces)
-        query = query.strip()
-        
-        # Get or create player
-        player: wavelink.Player = interaction.guild.voice_client
-        
-        if not player:
-            if not interaction.user.voice:
-                return await interaction.followup.send("You're not in a voice channel!")
+    async def cog_unload(self):
+        self.event_check_loop.cancel()
+
+    async def init_db(self):
+        async with aiosqlite.connect(self.db_path) as db:
+            # Create base table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS upcoming_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_date TIMESTAMP NOT NULL,
+                    event_name TEXT NOT NULL,
+                    has_time BOOLEAN NOT NULL,
+                    announced_1w BOOLEAN DEFAULT 0,
+                    announced_1d BOOLEAN DEFAULT 0
+                )
+            """)
             
+            # Auto-migrate table for new role feature if it doesn't exist
             try:
-                player = await interaction.user.voice.channel.connect(cls=wavelink.Player, self_deaf=True)
-                player.autoplay = wavelink.AutoPlayMode.disabled
-            except Exception as e:
-                return await interaction.followup.send(f"❌ Failed to join: {e}")
-        
-        # Store the text channel for announcements
-        player.text_channel = interaction.channel
-        
-        # Search for track
-        try:
-            # Add ytsearch: prefix if not a URL
-            if not query.startswith(('http://', 'https://')):
-                query = f"ytsearch:{query}"
-            
-            tracks = await wavelink.Playable.search(query)
-            if not tracks:
-                return await interaction.followup.send("❌ No results found!")
-            
-            track = tracks[0]
-            
-            if player.playing:
-                player.queue.put(track)
-                embed = discord.Embed(
-                    title="📝 Added to Queue",
-                    description=f"**{track.title}**",
-                    color=discord.Color.blue()
-                )
-                embed.add_field(name="Position", value=f"#{len(player.queue)}", inline=True)
-                embed.add_field(name="Duration", value=self.format_duration(track.length), inline=True)
-                await interaction.followup.send(embed=embed)
-            else:
-                # Skip the on_wavelink_track_start announcement (we'll send it here)
-                player._skip_next_announce = True
-                await player.play(track)
-                embed = discord.Embed(
-                    title="🎵 Now Playing",
-                    description=f"**{track.title}**",
-                    color=discord.Color.purple()
-                )
-                if track.artwork:
-                    embed.set_thumbnail(url=track.artwork)
-                embed.add_field(name="Duration", value=self.format_duration(track.length), inline=True)
-                embed.add_field(name="Author", value=track.author, inline=True)
-                await interaction.followup.send(embed=embed)
+                await db.execute("ALTER TABLE upcoming_events ADD COLUMN role_mention TEXT")
+            except aiosqlite.OperationalError:
+                pass # Column already exists, safe to ignore
                 
-        except Exception as e:
-            await interaction.followup.send(f"❌ Error: {e}")
-    
-    @app_commands.command(name="skip", description="Skip the current song")
-    async def slash_skip(self, interaction: discord.Interaction):
-        player: wavelink.Player = interaction.guild.voice_client
+            await db.commit()
+
+    async def parse_and_store_events(self, input_text: str) -> tuple[list, list]:
+        """Parses user input text and stores valid events in DB. Returns (success_list, fail_list)"""
+        success = []
+        failed = []
         
-        if not player or not player.playing:
-            return await interaction.response.send_message("Nothing playing.", ephemeral=True)
+        lines = input_text.strip().split('\n')
         
-        await player.skip()
-        await interaction.response.send_message("⏭️ Skipped!")
-    
-    @app_commands.command(name="queue", description="View the music queue")
-    async def slash_queue(self, interaction: discord.Interaction):
-        player: wavelink.Player = interaction.guild.voice_client
+        async with aiosqlite.connect(self.db_path) as db:
+            for line in lines:
+                if not line.strip(): continue
+                
+                try:
+                    parts = line.split('|')
+                    date_part = parts[0].strip()
+                    name_part = parts[1].strip()
+                    
+                    # Check if a role was provided
+                    role_mention = parts[2].strip() if len(parts) > 2 else None
+                    
+                    has_time = False
+                    try:
+                        # Try parsing with time first
+                        dt = datetime.strptime(date_part, "%m/%d/%Y/%H:%M")
+                        has_time = True
+                    except ValueError:
+                        # Fallback to date only (assume midnight)
+                        dt = datetime.strptime(date_part, "%m/%d/%Y")
+                    
+                    # Prevent adding past events
+                    if dt < datetime.now():
+                        failed.append(f"{line} (Event is in the past)")
+                        continue
+
+                    await db.execute(
+                        "INSERT INTO upcoming_events (event_date, event_name, has_time, role_mention) VALUES (?, ?, ?, ?)",
+                        (dt.isoformat(), name_part, has_time, role_mention)
+                    )
+                    
+                    role_str = f" [Ping: {role_mention}]" if role_mention else ""
+                    success.append(f"✅ **{name_part}** on {dt.strftime('%B %d, %Y' + (' at %H:%M' if has_time else ''))}{role_str}")
+                except Exception as e:
+                    failed.append(f"❌ `{line}` -> Invalid format")
+                    
+            await db.commit()
+            
+        return success, failed
+
+    async def handle_addevent(self, ctx_or_int, events_text: str):
+        success, failed = await self.parse_and_store_events(events_text)
         
-        if not player:
-            return await interaction.response.send_message("Not connected to voice.", ephemeral=True)
+        embed = discord.Embed(title="📅 Event Addition Results", color=discord.Color.blurple())
         
-        embed = discord.Embed(title="📜 Music Queue", color=discord.Color.purple())
-        
-        # Current track
-        if player.current:
-            embed.add_field(
-                name="🎵 Now Playing",
-                value=f"**{player.current.title}** ({self.format_duration(player.current.length)})",
-                inline=False
-            )
-        
-        # Queue
-        if player.queue:
-            queue_text = "\n".join([
-                f"{i+1}. **{track.title}** ({self.format_duration(track.length)})"
-                for i, track in enumerate(list(player.queue)[:10])
-            ])
-            embed.add_field(name=f"Up Next ({len(player.queue)} songs)", value=queue_text, inline=False)
+        if success:
+            embed.add_field(name="Successfully Added", value="\n".join(success), inline=False)
+        if failed:
+            embed.add_field(name="Failed to Add", value="\n".join(failed) + "\n\n*Format: MM/DD/YYYY/HH:MM|Name|@Role*", inline=False)
+            
+        if not success and not failed:
+            embed.description = "No input provided."
+
+        if isinstance(ctx_or_int, discord.Interaction):
+            await ctx_or_int.response.send_message(embed=embed)
         else:
-            embed.add_field(name="Up Next", value="Queue is empty", inline=False)
-        
-        await interaction.response.send_message(embed=embed)
-    
-    @app_commands.command(name="leave", description="Leave the voice channel")
-    async def slash_leave(self, interaction: discord.Interaction):
-        player: wavelink.Player = interaction.guild.voice_client
-        
-        if not player:
-            return await interaction.response.send_message("Not in a voice channel.", ephemeral=True)
-        
-        await player.disconnect()
-        await interaction.response.send_message("👋 Disconnected!")
-    
-    @app_commands.command(name="pause", description="Pause the music")
-    async def slash_pause(self, interaction: discord.Interaction):
-        player: wavelink.Player = interaction.guild.voice_client
-        
-        if not player or not player.playing:
-            return await interaction.response.send_message("Nothing playing.", ephemeral=True)
-        
-        await player.pause(True)
-        await interaction.response.send_message("⏸️ Paused!")
-    
-    @app_commands.command(name="resume", description="Resume the music")
-    async def slash_resume(self, interaction: discord.Interaction):
-        player: wavelink.Player = interaction.guild.voice_client
-        
-        if not player:
-            return await interaction.response.send_message("Nothing paused.", ephemeral=True)
-        
-        await player.pause(False)
-        await interaction.response.send_message("▶️ Resumed!")
-    
-    @app_commands.command(name="volume", description="Set the volume")
-    @app_commands.describe(level="Volume level (0-100)")
-    async def slash_volume(self, interaction: discord.Interaction, level: int):
-        player: wavelink.Player = interaction.guild.voice_client
-        
-        if not player:
-            return await interaction.response.send_message("Not connected.", ephemeral=True)
-        
-        level = max(0, min(100, level))
-        await player.set_volume(level)
-        await interaction.response.send_message(f"🔊 Volume set to {level}%")
-    
-    @app_commands.command(name="nowplaying", description="Show current song")
-    async def slash_nowplaying(self, interaction: discord.Interaction):
-        player: wavelink.Player = interaction.guild.voice_client
-        
-        if not player or not player.current:
-            return await interaction.response.send_message("Nothing playing.", ephemeral=True)
-        
-        track = player.current
-        embed = discord.Embed(
-            title="🎵 Now Playing",
-            description=f"**{track.title}**",
-            color=discord.Color.purple()
-        )
-        if track.artwork:
-            embed.set_thumbnail(url=track.artwork)
-        
-        # Progress bar
-        position = player.position
-        duration = track.length
-        progress = int((position / duration) * 20) if duration > 0 else 0
-        bar = "▓" * progress + "░" * (20 - progress)
-        
-        embed.add_field(
-            name="Progress",
-            value=f"`{self.format_duration(position)}` {bar} `{self.format_duration(duration)}`",
-            inline=False
-        )
-        embed.add_field(name="Author", value=track.author, inline=True)
-        embed.add_field(name="Volume", value=f"{player.volume}%", inline=True)
-        
-        await interaction.response.send_message(embed=embed)
-    
-    @app_commands.command(name="musichelp", description="Show music commands")
-    async def slash_musichelp(self, interaction: discord.Interaction):
-        embed = discord.Embed(title="🎵 Music Commands", color=discord.Color.purple())
-        embed.add_field(name="Commands", value="""
-`/join` - Join voice channel
-`/play <url/search>` - Play a song
-`/skip` - Skip current song
-`/pause` - Pause playback
-`/resume` - Resume playback
-`/volume <0-100>` - Set volume
-`/queue` - View queue
-`/nowplaying` - Show current song
-`/leave` - Leave channel
-        """, inline=False)
-        embed.set_footer(text="Powered by Lavalink 🎶")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+            await ctx_or_int.send(embed=embed)
 
+    @commands.command(name="addevent")
+    async def prefix_addevent(self, ctx, *, events_text: str):
+        """Add events. Use Shift+Enter for multiple events."""
+        await self.handle_addevent(ctx, events_text)
 
-# ========================= BOT SETUP =========================
+    @app_commands.command(name="addevent", description="Add one or multiple events")
+    @app_commands.describe(events_text="Format: MM/DD/YYYY/HH:MM | Event Name | @Role (Newlines for multiple)")
+    async def slash_addevent(self, interaction: discord.Interaction, events_text: str):
+        await self.handle_addevent(interaction, events_text)
 
-intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+    @tasks.loop(minutes=30)
+    async def event_check_loop(self):
+        """Background loop to check for upcoming events and post announcements"""
+        await self.bot.wait_until_ready()
+        
+        channel = self.bot.get_channel(ANNOUNCEMENT_CHANNEL_ID)
+        if not channel:
+            print(f"[EventAnnouncer] WARNING: Announcement channel {ANNOUNCEMENT_CHANNEL_ID} not found.")
+            return
 
+        now = datetime.now()
+        updates_made = False
 
-@bot.event
-async def on_ready():
-    print("=" * 50)
-    print(f"Caleb Bot v3 is ready! (Lavalink Edition)")
-    print(f"Logged in as: {bot.user.name} ({bot.user.id})")
-    print(f"Discord.py version: {discord.__version__}")
-    print(f"Wavelink version: {wavelink.__version__}")
-    print(f"Guilds: {len(bot.guilds)}")
-    print("=" * 50)
-    
-    # Load cogs
-    await bot.add_cog(RoleAssignment(bot))
-    await bot.add_cog(DrinkCounter(bot))
-    await bot.add_cog(Music(bot))
-    
-    # Sync slash commands
-    try:
-        synced = await bot.tree.sync()
-        print(f"✅ Synced {len(synced)} slash commands")
-    except Exception as e:
-        print(f"❌ Failed to sync: {e}")
-    
-    # Set status
-    await bot.change_presence(activity=discord.Activity(
-        type=discord.ActivityType.listening,
-        name="/play | Lavalink 🎵"
-    ))
-
-
-@bot.event
-async def on_voice_state_update(member, before, after):
-    """Auto-disconnect when alone in voice channel"""
-    if member.id == bot.user.id:
-        return
-    
-    player: wavelink.Player = member.guild.voice_client
-    if player and player.channel:
-        members = [m for m in player.channel.members if not m.bot]
-        if len(members) == 0:
-            await player.disconnect()
-
-
-@bot.command(name="help")
-async def help_command(ctx):
-    """Show all available commands"""
-    embed = discord.Embed(
-        title="🤖 Caleb Bot v3 - Help",
-        description="All available commands:",
-        color=discord.Color.blue()
-    )
-    
-    embed.add_field(name="🎭 Role Assignment", value="""
-`!setuproles` - Create role message (Admin)
-React to role messages to get roles!
-    """, inline=False)
-    
-    embed.add_field(name="🍻 Drink Counter", value="""
-`/owe @debtor @creditor [amount] [reason]`
-`/paid @debtor @creditor [amount]`
-`/drinks [@user]` | `/leaderboard`
-    """, inline=False)
-    
-    embed.add_field(name="🎵 Music (Lavalink)", value="""
-`/join` `/leave` `/play <url>`
-`/skip` `/pause` `/resume` `/queue`
-`/volume` `/nowplaying`
-    """, inline=False)
-    
-    embed.set_footer(text="Powered by Lavalink 🎶")
-    await ctx.send(embed=embed)
-
-
-@bot.tree.command(name="help", description="Show all available commands")
-async def slash_help(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🤖 Caleb Bot v3 - Help",
-        description="All available commands:",
-        color=discord.Color.blue()
-    )
-    
-    embed.add_field(name="🎭 Role Assignment", value="React to role messages to get roles!", inline=False)
-    embed.add_field(name="🍻 Drink Counter", value="`/owe` `/paid` `/drinks` `/leaderboard`", inline=False)
-    embed.add_field(name="🎵 Music", value="`/join` `/play` `/skip` `/pause` `/resume` `/queue` `/volume` `/nowplaying` `/leave`", inline=False)
-    
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
-
-if __name__ == "__main__":
-    try:
-        bot.run(DISCORD_TOKEN)
-    except discord.errors.LoginFailure:
-        print("ERROR: Invalid token!")
-    except Exception as e:
-        print(f"ERROR: {e}")
-        import traceback
-        traceback.print_exc()
+        async with aiosqlite.connect(self.db_path) as db
