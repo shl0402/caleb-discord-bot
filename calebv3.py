@@ -5,6 +5,7 @@ import asyncio
 import aiosqlite
 from pathlib import Path
 from datetime import datetime, timedelta
+import pytz
 from typing import Optional
 import os
 
@@ -17,6 +18,9 @@ if not DISCORD_TOKEN:
     exit(1)
 
 # ========================= CONFIGURATION =========================
+
+# Set timezone explicitly to Hong Kong
+HK_TZ = pytz.timezone('Asia/Hong_Kong')
 
 # Database file path for bot data
 DB_PATH = Path(__file__).parent / "caleb_bot_data.db"
@@ -38,6 +42,10 @@ ROLE_MESSAGE_IDS = {
     1261173511511216231: 0,
     1261157962702127104: 0,
 }
+
+def get_hk_now():
+    """Helper function to always get the current time in Hong Kong timezone"""
+    return datetime.now(HK_TZ).replace(tzinfo=None)
 
 
 # ========================= ROLE ASSIGNMENT COG =========================
@@ -348,7 +356,7 @@ class EventAnnouncer(commands.Cog):
     async def cog_load(self):
         await self.init_db()
         self.event_check_loop.start()
-        print(f"[EventAnnouncer] Cog loaded! Checking events every 30 minutes.")
+        print(f"[EventAnnouncer] Cog loaded! Checking events every 30 minutes in HK Time.")
 
     async def cog_unload(self):
         self.event_check_loop.cancel()
@@ -403,8 +411,8 @@ class EventAnnouncer(commands.Cog):
                         # Fallback to date only (assume midnight)
                         dt = datetime.strptime(date_part, "%m/%d/%Y")
                     
-                    # Prevent adding past events
-                    if dt < datetime.now():
+                    # Prevent adding past events (using HK Time)
+                    if dt < get_hk_now():
                         failed.append(f"{line} (Event is in the past)")
                         continue
 
@@ -576,7 +584,8 @@ class EventAnnouncer(commands.Cog):
             print(f"[EventAnnouncer] WARNING: Announcement channel {ANNOUNCEMENT_CHANNEL_ID} not found.")
             return
 
-        now = datetime.now()
+        # Use HK time for checking
+        now = get_hk_now()
         updates_made = False
 
         async with aiosqlite.connect(self.db_path) as db:
@@ -643,7 +652,7 @@ bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 @bot.event
 async def on_ready():
     print("=" * 50)
-    print(f"Caleb Bot v3 is ready! (Event Edition + Roles + Edit/Remove)")
+    print(f"Caleb Bot v3 is ready! (Event Edition + Roles + HK Time)")
     print(f"Logged in as: {bot.user.name} ({bot.user.id})")
     print(f"Discord.py version: {discord.__version__}")
     print(f"Guilds: {len(bot.guilds)}")
@@ -695,7 +704,7 @@ React to role messages to get roles!
 `/removeevent <id>` - Delete an event
     """, inline=False)
     
-    embed.set_footer(text="Bot version 3.3")
+    embed.set_footer(text="Bot version 3.4")
     await ctx.send(embed=embed)
 
 
