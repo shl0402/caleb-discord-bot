@@ -463,7 +463,7 @@ class EventAnnouncer(commands.Cog):
         now = datetime.now()
         updates_made = False
 
-        async with aiosqlite.connect(self.db_path) as dbasync with aiosqlite.connect(self.db_path) as db:
+        async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute("SELECT * FROM upcoming_events WHERE announced_1d = 0")
             events = await cursor.fetchall()
