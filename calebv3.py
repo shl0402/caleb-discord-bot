@@ -463,4 +463,146 @@ class EventAnnouncer(commands.Cog):
         now = datetime.now()
         updates_made = False
 
-        async with aiosqlite.connect(self.db_path) as db
+        async with aiosqlite.connect(self.db_path) as dbasync with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM upcoming_events WHERE announced_1d = 0")
+            events = await cursor.fetchall()
+            
+            for event in events:
+                event_dt = datetime.fromisoformat(event['event_date'])
+                time_diff = event_dt - now
+                days_left = time_diff.total_seconds() / 86400
+
+                # If event passed without being triggered (e.g. bot was offline), mark it complete
+                if days_left < 0:
+                    await db.execute("UPDATE upcoming_events SET announced_1w = 1, announced_1d = 1 WHERE id = ?", (event['id'],))
+                    updates_made = True
+                    continue
+
+                # Prepare the ping message content
+                ping_content = event['role_mention'] if event['role_mention'] else None
+
+                # 1 Week Announcement (Between 1 and 7 days left)
+                if not event['announced_1w'] and 1 < days_left <= 7:
+                    embed = discord.Embed(
+                        title="⏳ Upcoming Event in 1 Week!",
+                        description=f"**{event['event_name']}** is coming up!",
+                        color=discord.Color.gold()
+                    )
+                    time_str = event_dt.strftime('%A, %B %d, %Y') + (f" at {event_dt.strftime('%H:%M')}" if event['has_time'] else "")
+                    embed.add_field(name="Date", value=time_str)
+                    
+                    await channel.send(content=ping_content, embed=embed)
+                    await db.execute("UPDATE upcoming_events SET announced_1w = 1 WHERE id = ?", (event['id'],))
+                    updates_made = True
+
+                # 1 Day Announcement (Between 0 and 1 days left)
+                elif not event['announced_1d'] and 0 < days_left <= 1:
+                    embed = discord.Embed(
+                        title="🚨 Event Tomorrow!",
+                        description=f"**{event['event_name']}** is happening soon!",
+                        color=discord.Color.red()
+                    )
+                    time_str = event_dt.strftime('%A, %B %d, %Y') + (f" at {event_dt.strftime('%H:%M')}" if event['has_time'] else "")
+                    embed.add_field(name="Date", value=time_str)
+                    
+                    await channel.send(content=ping_content, embed=embed)
+                    await db.execute("UPDATE upcoming_events SET announced_1d = 1 WHERE id = ?", (event['id'],))
+                    updates_made = True
+
+            if updates_made:
+                await db.commit()
+
+        # Clean up old events once a day (run when bot initializes or random cycle)
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM upcoming_events WHERE event_date < ?", ((now - timedelta(days=2)).isoformat(),))
+            await db.commit()
+
+
+# ========================= BOT SETUP =========================
+
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+
+@bot.event
+async def on_ready():
+    print("=" * 50)
+    print(f"Caleb Bot v3 is ready! (Event Edition + Roles)")
+    print(f"Logged in as: {bot.user.name} ({bot.user.id})")
+    print(f"Discord.py version: {discord.__version__}")
+    print(f"Guilds: {len(bot.guilds)}")
+    print("=" * 50)
+    
+    # Load cogs
+    await bot.add_cog(RoleAssignment(bot))
+    await bot.add_cog(DrinkCounter(bot))
+    await bot.add_cog(EventAnnouncer(bot))
+    
+    # Sync slash commands
+    try:
+        synced = await bot.tree.sync()
+        print(f"✅ Synced {len(synced)} slash commands")
+    except Exception as e:
+        print(f"❌ Failed to sync: {e}")
+    
+    # Set status
+    await bot.change_presence(activity=discord.Activity(
+        type=discord.ActivityType.listening,
+        name="/help | Managing Events 📅"
+    ))
+
+
+@bot.command(name="help")
+async def help_command(ctx):
+    """Show all available commands"""
+    embed = discord.Embed(
+        title="🤖 Caleb Bot v3 - Help",
+        description="All available commands:",
+        color=discord.Color.blue()
+    )
+    
+    embed.add_field(name="🎭 Role Assignment", value="""
+`!setuproles` - Create role message (Admin)
+React to role messages to get roles!
+    """, inline=False)
+    
+    embed.add_field(name="🍻 Drink Counter", value="""
+`/owe @debtor @creditor [amount] [reason]`
+`/paid @debtor @creditor [amount]`
+`/drinks [@user]` | `/leaderboard`
+    """, inline=False)
+    
+    embed.add_field(name="📅 Event Announcer", value="""
+`/addevent <events>` or `!addevent <events>`
+Format: `MM/DD/YYYY/HH:MM|Event Name|@Role`
+*(Time and Role are optional. Put multiple events on new lines)*
+    """, inline=False)
+    
+    embed.set_footer(text="Bot version 3.2")
+    await ctx.send(embed=embed)
+
+
+@bot.tree.command(name="help", description="Show all available commands")
+async def slash_help(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🤖 Caleb Bot v3 - Help",
+        description="All available commands:",
+        color=discord.Color.blue()
+    )
+    
+    embed.add_field(name="🎭 Role Assignment", value="React to role messages to get roles!", inline=False)
+    embed.add_field(name="🍻 Drink Counter", value="`/owe` `/paid` `/drinks` `/leaderboard`", inline=False)
+    embed.add_field(name="📅 Events", value="`/addevent` (Format: MM/DD/YYYY/HH:MM|Name|@Role)", inline=False)
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+if __name__ == "__main__":
+    try:
+        bot.run(DISCORD_TOKEN)
+    except discord.errors.LoginFailure:
+        print("ERROR: Invalid token!")
+    except Exception as e:
+        print(f"ERROR: {e}")
+        import traceback
+        traceback.print_exc()
