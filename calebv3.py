@@ -4,8 +4,7 @@ from discord import app_commands
 import asyncio
 import aiosqlite
 from pathlib import Path
-from datetime import datetime, timedelta
-import pytz
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import os
 
@@ -19,8 +18,8 @@ if not DISCORD_TOKEN:
 
 # ========================= CONFIGURATION =========================
 
-# Set timezone explicitly to Hong Kong
-HK_TZ = pytz.timezone('Asia/Hong_Kong')
+# Create a permanent UTC+8 timezone object for Hong Kong
+HK_TZ = timezone(timedelta(hours=8), name="HKT")
 
 # Database file path for bot data
 DB_PATH = Path(__file__).parent / "caleb_bot_data.db"
@@ -61,7 +60,7 @@ class RoleAssignment(commands.Cog):
     async def on_ready(self):
         print(f"[RoleAssignment] Cog loaded!")
     
-    @commands.command(name="setuproles")
+    @commands.command(name="setup_roles")
     @commands.has_permissions(administrator=True)
     async def setup_roles(self, ctx: commands.Context):
         """Send the role assignment message with all reaction emojis."""
@@ -437,7 +436,7 @@ class EventAnnouncer(commands.Cog):
             cursor = await db.execute("SELECT * FROM upcoming_events ORDER BY event_date ASC")
             return await cursor.fetchall()
 
-    async def handle_viewevents(self, ctx_or_int):
+    async def handle_view_events(self, ctx_or_int):
         events = await self.get_all_events()
         
         if not events:
@@ -460,17 +459,17 @@ class EventAnnouncer(commands.Cog):
         else:
             await ctx_or_int.send(embed=embed)
 
-    @commands.command(name="viewevents")
-    async def prefix_viewevents(self, ctx):
+    @commands.command(name="view_events")
+    async def prefix_view_events(self, ctx):
         """List all upcoming events"""
-        await self.handle_viewevents(ctx)
+        await self.handle_view_events(ctx)
 
-    @app_commands.command(name="viewevents", description="List all upcoming events")
-    async def slash_viewevents(self, interaction: discord.Interaction):
-        await self.handle_viewevents(interaction)
+    @app_commands.command(name="view_events", description="List all upcoming events")
+    async def slash_view_events(self, interaction: discord.Interaction):
+        await self.handle_view_events(interaction)
 
     # ===== ADD EVENT =====
-    async def handle_addevent(self, ctx_or_int, events_text: str):
+    async def handle_add_event(self, ctx_or_int, events_text: str):
         success, failed = await self.parse_and_store_events(events_text)
         
         embed = discord.Embed(title="📅 Event Addition Results", color=discord.Color.blurple())
@@ -488,43 +487,43 @@ class EventAnnouncer(commands.Cog):
         else:
             await ctx_or_int.send(embed=embed)
 
-    @commands.command(name="addevent")
-    async def prefix_addevent(self, ctx, *, events_text: str):
+    @commands.command(name="add_event")
+    async def prefix_add_event(self, ctx, *, events_text: str):
         """Add events. Use Shift+Enter for multiple events."""
-        await self.handle_addevent(ctx, events_text)
+        await self.handle_add_event(ctx, events_text)
 
-    @app_commands.command(name="addevent", description="Add one or multiple events")
+    @app_commands.command(name="add_event", description="Add one or multiple events")
     @app_commands.describe(events_text="Format: MM/DD/YYYY/HH:MM | Event Name | @Role (Newlines for multiple)")
-    async def slash_addevent(self, interaction: discord.Interaction, events_text: str):
-        await self.handle_addevent(interaction, events_text)
+    async def slash_add_event(self, interaction: discord.Interaction, events_text: str):
+        await self.handle_add_event(interaction, events_text)
 
     # ===== REMOVE EVENT =====
-    async def handle_removeevent(self, ctx_or_int, event_id: int):
+    async def handle_remove_event(self, ctx_or_int, event_id: int):
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute("DELETE FROM upcoming_events WHERE id = ?", (event_id,))
             if cursor.rowcount > 0:
                 await db.commit()
                 msg = f"✅ Event ID `{event_id}` has been removed successfully!"
             else:
-                msg = f"❌ Event ID `{event_id}` not found. Use `/viewevents` to see valid IDs."
+                msg = f"❌ Event ID `{event_id}` not found. Use `/view_events` to see valid IDs."
                 
         if isinstance(ctx_or_int, discord.Interaction):
             await ctx_or_int.response.send_message(msg)
         else:
             await ctx_or_int.send(msg)
 
-    @commands.command(name="removeevent")
-    async def prefix_removeevent(self, ctx, event_id: int):
+    @commands.command(name="remove_event")
+    async def prefix_remove_event(self, ctx, event_id: int):
         """Remove an event by its ID"""
-        await self.handle_removeevent(ctx, event_id)
+        await self.handle_remove_event(ctx, event_id)
 
-    @app_commands.command(name="removeevent", description="Remove an event by its ID")
-    @app_commands.describe(event_id="The ID of the event to remove (use /viewevents to find it)")
-    async def slash_removeevent(self, interaction: discord.Interaction, event_id: int):
-        await self.handle_removeevent(interaction, event_id)
+    @app_commands.command(name="remove_event", description="Remove an event by its ID")
+    @app_commands.describe(event_id="The ID of the event to remove (use /view_events to find it)")
+    async def slash_remove_event(self, interaction: discord.Interaction, event_id: int):
+        await self.handle_remove_event(interaction, event_id)
 
     # ===== EDIT EVENT =====
-    async def handle_editevent(self, ctx_or_int, event_id: int, new_data: str):
+    async def handle_edit_event(self, ctx_or_int, event_id: int, new_data: str):
         try:
             parts = new_data.split('|')
             date_part = parts[0].strip()
@@ -560,18 +559,18 @@ class EventAnnouncer(commands.Cog):
         else:
             await ctx_or_int.send(msg)
 
-    @commands.command(name="editevent")
-    async def prefix_editevent(self, ctx, event_id: int, *, new_data: str):
-        """Edit an event. Format: !editevent <id> MM/DD/YYYY/HH:MM | Event Name | @Role"""
-        await self.handle_editevent(ctx, event_id, new_data)
+    @commands.command(name="edit_event")
+    async def prefix_edit_event(self, ctx, event_id: int, *, new_data: str):
+        """Edit an event. Format: !edit_event <id> MM/DD/YYYY/HH:MM | Event Name | @Role"""
+        await self.handle_edit_event(ctx, event_id, new_data)
 
-    @app_commands.command(name="editevent", description="Edit an existing event by ID")
+    @app_commands.command(name="edit_event", description="Edit an existing event by ID")
     @app_commands.describe(
         event_id="The ID of the event to edit",
         new_data="Format: MM/DD/YYYY/HH:MM | Event Name | @Role"
     )
-    async def slash_editevent(self, interaction: discord.Interaction, event_id: int, new_data: str):
-        await self.handle_editevent(interaction, event_id, new_data)
+    async def slash_edit_event(self, interaction: discord.Interaction, event_id: int, new_data: str):
+        await self.handle_edit_event(interaction, event_id, new_data)
 
     # ===== ANNOUNCEMENT LOOP =====
     @tasks.loop(minutes=30)
@@ -652,7 +651,7 @@ bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 @bot.event
 async def on_ready():
     print("=" * 50)
-    print(f"Caleb Bot v3 is ready! (Event Edition + Roles + HK Time)")
+    print(f"Caleb Bot v3 is ready! (Event Edition + Roles + HK Time + Underscores)")
     print(f"Logged in as: {bot.user.name} ({bot.user.id})")
     print(f"Discord.py version: {discord.__version__}")
     print(f"Guilds: {len(bot.guilds)}")
@@ -687,7 +686,7 @@ async def help_command(ctx):
     )
     
     embed.add_field(name="🎭 Role Assignment", value="""
-`!setuproles` - Create role message (Admin)
+`!setup_roles` - Create role message (Admin)
 React to role messages to get roles!
     """, inline=False)
     
@@ -698,13 +697,13 @@ React to role messages to get roles!
     """, inline=False)
     
     embed.add_field(name="📅 Event Announcer", value="""
-`/viewevents` - See all scheduled events and their IDs
-`/addevent` - `MM/DD/YYYY/HH:MM|Event Name|@Role`
-`/editevent <id>` - Overwrite an existing event
-`/removeevent <id>` - Delete an event
+`/view_events` - See all scheduled events and their IDs
+`/add_event` - `MM/DD/YYYY/HH:MM|Event Name|@Role`
+`/edit_event <id>` - Overwrite an existing event
+`/remove_event <id>` - Delete an event
     """, inline=False)
     
-    embed.set_footer(text="Bot version 3.4")
+    embed.set_footer(text="Bot version 3.5")
     await ctx.send(embed=embed)
 
 
@@ -718,7 +717,7 @@ async def slash_help(interaction: discord.Interaction):
     
     embed.add_field(name="🎭 Role Assignment", value="React to role messages to get roles!", inline=False)
     embed.add_field(name="🍻 Drink Counter", value="`/owe` `/paid` `/drinks` `/leaderboard`", inline=False)
-    embed.add_field(name="📅 Events", value="`/viewevents` `/addevent` `/editevent` `/removeevent`", inline=False)
+    embed.add_field(name="📅 Events", value="`/view_events` `/add_event` `/edit_event` `/remove_event`", inline=False)
     
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
